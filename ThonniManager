@@ -1,265 +1,1082 @@
--- ╔══════════════════════════════════════════╗
--- ║        NUKE MANAGER  —  Final            ║
--- ║  Auto Merge · Lock Base · Auto Upgrade   ║
--- ║  Anti-AFK · Float Lock                   ║
--- ╚══════════════════════════════════════════╝
+-- ╔══════════════════════════════════════════════╗
+-- ║         Thonni' Manager  —  v3.0             ║
+-- ║  Auto Merge · Lock Base · Auto Upgrade       ║
+-- ║  Auto Rebirth · Anti-AFK · Animated BG       ║
+-- ╚══════════════════════════════════════════════╝
 
--- ── Anti-AFK ──────────────────────────────
+-- ── Anti-AFK ──────────────────────────────────
 local VirtualUser = game:GetService("VirtualUser")
 game:GetService("Players").LocalPlayer.Idled:Connect(function()
     VirtualUser:CaptureController()
     VirtualUser:ClickButton2(Vector2.new())
 end)
 
--- ── Services ──────────────────────────────
+-- ── Services ──────────────────────────────────
 local Players      = game:GetService("Players")
 local RunService   = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local LocalPlayer  = Players.LocalPlayer
 local NukeRemotes  = game:GetService("ReplicatedStorage").NukeRemotes
 
--- ── Remotes ───────────────────────────────
+-- ── Remotes ───────────────────────────────────
 local Drop            = NukeRemotes.Drop
 local LockBaseRemote  = NukeRemotes.RequestLockBase
 local PurchaseUpgrade = NukeRemotes.PurchaseUpgrade
+local RebirthRemote   = NukeRemotes.RequestRebirth
 
--- ── Config ────────────────────────────────
+-- ── Config ────────────────────────────────────
 local CFG = {
     PICKUP_WAIT      = 0.8,
     MERGE_WAIT       = 0.8,
     SCAN_DELAY       = 1,
     LOCK_INTERVAL    = 3,
     UPGRADE_INTERVAL = 2,
+    REBIRTH_INTERVAL = 5,
     FLOAT_HEIGHT     = 20,
 }
 
--- ── State ─────────────────────────────────
+-- ── State ─────────────────────────────────────
 local state = {
     autoMerge   = false,
     lockBase    = false,
     upgradeMax  = false,
     upgradeTier = false,
     upgradeLock = false,
+    autoRebirth = false,
     isFloating  = false,
     idlePos     = nil,
 }
 
--- ══════════════════════════════════════════
---  GUI
--- ══════════════════════════════════════════
+-- ══════════════════════════════════════════════
+--  GUI ROOT
+-- ══════════════════════════════════════════════
 
 local sg = Instance.new("ScreenGui")
-sg.Name = "NukeManager"
-sg.ResetOnSpawn = false
+sg.Name           = "ThonniManager"
+sg.ResetOnSpawn   = false
 sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-sg.Parent = game:GetService("CoreGui")
+sg.Parent         = game:GetService("CoreGui")
 
--- Main frame
-local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 240, 0, 340)
-frame.Position = UDim2.new(0, 16, 0.5, -170)
-frame.BackgroundColor3 = Color3.fromRGB(8, 8, 18)
-frame.BorderSizePixel = 0
-frame.Active = true
-frame.Draggable = true
-frame.Parent = sg
-Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 16)
+local fast   = TweenInfo.new(0.2,  Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local snappy = TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 
-local stroke = Instance.new("UIStroke", frame)
-stroke.Color = Color3.fromRGB(120, 80, 255)
-stroke.Thickness = 1
-stroke.Transparency = 0.5
-
--- Animate border glow
-RunService.Heartbeat:Connect(function()
-    stroke.Transparency = 0.35 + math.sin(tick() * 2) * 0.25
-end)
-
--- Header
-local hdr = Instance.new("Frame", frame)
-hdr.Size = UDim2.new(1, 0, 0, 72)
-hdr.BackgroundColor3 = Color3.fromRGB(12, 10, 24)
-hdr.BorderSizePixel = 0
-Instance.new("UICorner", hdr).CornerRadius = UDim.new(0, 16)
-local hfix = Instance.new("Frame", hdr)
-hfix.Size = UDim2.new(1, 0, 0, 16)
-hfix.Position = UDim2.new(0, 0, 1, -16)
-hfix.BackgroundColor3 = Color3.fromRGB(12, 10, 24)
-hfix.BorderSizePixel = 0
-
-local ico = Instance.new("TextLabel", hdr)
-ico.Size = UDim2.new(0, 32, 0, 32)
-ico.Position = UDim2.new(0, 12, 0, 10)
-ico.BackgroundColor3 = Color3.fromRGB(30, 20, 60)
-ico.Text = "☢"
-ico.TextSize = 16
-ico.Font = Enum.Font.GothamBold
-ico.TextColor3 = Color3.fromRGB(160, 120, 255)
-ico.TextXAlignment = Enum.TextXAlignment.Center
-Instance.new("UICorner", ico).CornerRadius = UDim.new(0, 9)
-
-local htitle = Instance.new("TextLabel", hdr)
-htitle.Size = UDim2.new(1, -70, 0, 18)
-htitle.Position = UDim2.new(0, 52, 0, 11)
-htitle.BackgroundTransparency = 1
-htitle.Text = "Nuke Manager"
-htitle.TextColor3 = Color3.fromRGB(220, 210, 255)
-htitle.TextSize = 13
-htitle.Font = Enum.Font.GothamBold
-htitle.TextXAlignment = Enum.TextXAlignment.Left
-
-local hsub = Instance.new("TextLabel", hdr)
-hsub.Size = UDim2.new(1, -70, 0, 14)
-hsub.Position = UDim2.new(0, 52, 0, 28)
-hsub.BackgroundTransparency = 1
-hsub.Text = "automation suite"
-hsub.TextColor3 = Color3.fromRGB(70, 60, 100)
-hsub.TextSize = 10
-hsub.Font = Enum.Font.Gotham
-hsub.TextXAlignment = Enum.TextXAlignment.Left
-
-local statusLbl = Instance.new("TextLabel", hdr)
-statusLbl.Size = UDim2.new(1, -16, 0, 14)
-statusLbl.Position = UDim2.new(0, 12, 0, 52)
-statusLbl.BackgroundTransparency = 1
-statusLbl.Text = "● idle"
-statusLbl.TextColor3 = Color3.fromRGB(60, 55, 90)
-statusLbl.TextSize = 10
-statusLbl.Font = Enum.Font.GothamMedium
-statusLbl.TextXAlignment = Enum.TextXAlignment.Left
-
-local function setStatus(msg, active)
-    statusLbl.Text = (active and "● " or "○ ") .. msg
-    statusLbl.TextColor3 = active
-        and Color3.fromRGB(140, 100, 255)
-        or  Color3.fromRGB(60, 55, 90)
+local function tw(obj, props, info)
+    TweenService:Create(obj, info or fast, props):Play()
 end
 
--- ── Toggle builder ────────────────────────
-local yOff = 80
-local ti = TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+-- ── Main window ───────────────────────────────
+local window = Instance.new("Frame")
+window.Name             = "Window"
+window.Size             = UDim2.new(0, 580, 0, 430)
+window.Position         = UDim2.new(0.5, -290, 0.5, -215)
+window.BackgroundColor3 = Color3.fromRGB(6, 6, 16)
+window.BorderSizePixel  = 0
+window.Active           = true
+window.Draggable        = true
+window.ClipsDescendants = true
+window.Parent           = sg
+Instance.new("UICorner", window).CornerRadius = UDim.new(0, 16)
 
-local function makeToggle(labelTxt, descTxt, key)
-    local row = Instance.new("Frame", frame)
-    row.Size = UDim2.new(1, -16, 0, 44)
-    row.Position = UDim2.new(0, 8, 0, yOff)
-    row.BackgroundColor3 = Color3.fromRGB(14, 12, 26)
-    row.BorderSizePixel = 0
+local wStroke = Instance.new("UIStroke", window)
+wStroke.Color       = Color3.fromRGB(120, 80, 255)
+wStroke.Thickness   = 1
+wStroke.Transparency = 0.5
+
+-- slide in animation
+window.Position = UDim2.new(0.5, -290, 1.5, 0)
+tw(window, {Position = UDim2.new(0.5, -290, 0.5, -215)},
+    TweenInfo.new(0.55, Enum.EasingStyle.Back, Enum.EasingDirection.Out))
+
+-- ══════════════════════════════════════════════
+--  ANIMATED BACKGROUND (inside the window)
+-- ══════════════════════════════════════════════
+
+local bgFrame = Instance.new("Frame", window)
+bgFrame.Name             = "Background"
+bgFrame.Size             = UDim2.new(1, 0, 1, 0)
+bgFrame.BackgroundColor3 = Color3.fromRGB(6, 6, 16)
+bgFrame.BorderSizePixel  = 0
+bgFrame.ZIndex           = 1
+
+-- Grid lines (horizontal)
+for i = 1, 9 do
+    local line = Instance.new("Frame", bgFrame)
+    line.Size             = UDim2.new(1, 0, 0, 1)
+    line.Position         = UDim2.new(0, 0, i / 10, 0)
+    line.BackgroundColor3 = Color3.fromRGB(35, 20, 75)
+    line.BackgroundTransparency = 0.78
+    line.BorderSizePixel  = 0
+    line.ZIndex           = 1
+end
+
+-- Grid lines (vertical)
+for i = 1, 15 do
+    local line = Instance.new("Frame", bgFrame)
+    line.Size             = UDim2.new(0, 1, 1, 0)
+    line.Position         = UDim2.new(i / 16, 0, 0, 0)
+    line.BackgroundColor3 = Color3.fromRGB(35, 20, 75)
+    line.BackgroundTransparency = 0.78
+    line.BorderSizePixel  = 0
+    line.ZIndex           = 1
+end
+
+-- Floating orbs
+local orbConfigs = {
+    {startX=0.12, startY=0.25, size=200, color=Color3.fromRGB(60,20,160),  transparency=0.88, duration=6},
+    {startX=0.78, startY=0.55, size=170, color=Color3.fromRGB(100,20,180), transparency=0.90, duration=8},
+    {startX=0.45, startY=0.85, size=150, color=Color3.fromRGB(40,20,140),  transparency=0.91, duration=7},
+    {startX=0.88, startY=0.18, size=130, color=Color3.fromRGB(80,20,200),  transparency=0.92, duration=5},
+}
+
+local function animateOrb(orb, cfg)
+    local offsets = {
+        {dx=0.12, dy=-0.10},
+        {dx=-0.08, dy=0.15},
+        {dx=0.06,  dy=0.08},
+        {dx=-0.12, dy=-0.06},
+    }
+    local i = 0
+    local function nextTween()
+        i = (i % #offsets) + 1
+        local o = offsets[i]
+        local newX = math.clamp(cfg.startX + o.dx + (math.random()-0.5)*0.06, 0.05, 0.92)
+        local newY = math.clamp(cfg.startY + o.dy + (math.random()-0.5)*0.06, 0.05, 0.92)
+        local dur  = cfg.duration + (math.random()-0.5)*2
+        local t = TweenService:Create(orb,
+            TweenInfo.new(dur, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+            {Position = UDim2.new(newX, -cfg.size/2, newY, -cfg.size/2)}
+        )
+        t.Completed:Connect(nextTween)
+        t:Play()
+    end
+    nextTween()
+
+    -- pulse transparency
+    task.spawn(function()
+        while orb.Parent do
+            TweenService:Create(orb,
+                TweenInfo.new(cfg.duration*0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+                {BackgroundTransparency = cfg.transparency - 0.04}
+            ):Play()
+            task.wait(cfg.duration*0.6)
+            TweenService:Create(orb,
+                TweenInfo.new(cfg.duration*0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+                {BackgroundTransparency = cfg.transparency + 0.02}
+            ):Play()
+            task.wait(cfg.duration*0.6)
+        end
+    end)
+end
+
+for _, cfg in orbConfigs do
+    local orb = Instance.new("Frame", bgFrame)
+    orb.Size             = UDim2.new(0, cfg.size, 0, cfg.size)
+    orb.Position         = UDim2.new(cfg.startX, -cfg.size/2, cfg.startY, -cfg.size/2)
+    orb.BackgroundColor3 = cfg.color
+    orb.BackgroundTransparency = cfg.transparency
+    orb.BorderSizePixel  = 0
+    orb.ZIndex           = 1
+    Instance.new("UICorner", orb).CornerRadius = UDim.new(1, 0)
+    animateOrb(orb, cfg)
+end
+
+-- Floating particles
+local particleColors = {
+    Color3.fromRGB(140, 90, 255),
+    Color3.fromRGB(100, 60, 220),
+    Color3.fromRGB(180, 120, 255),
+    Color3.fromRGB(80, 50, 200),
+}
+
+local function spawnParticle()
+    local size = math.random(3, 7)
+    local p = Instance.new("Frame", bgFrame)
+    p.Size             = UDim2.new(0, size, 0, size)
+    p.Position         = UDim2.new(math.random(), 0, 1.05, 0)
+    p.BackgroundColor3 = particleColors[math.random(#particleColors)]
+    p.BackgroundTransparency = math.random(55, 80) / 100
+    p.BorderSizePixel  = 0
+    p.ZIndex           = 2
+    Instance.new("UICorner", p).CornerRadius = UDim.new(1, 0)
+
+    local targetX   = math.random() + (math.random()-0.5)*0.3
+    local duration  = math.random(40, 90) / 10
+
+    -- float up
+    TweenService:Create(p,
+        TweenInfo.new(duration, Enum.EasingStyle.Linear),
+        {Position = UDim2.new(targetX, 0, -0.05, 0)}
+    ):Play()
+
+    -- flicker transparency
+    task.spawn(function()
+        while p.Parent do
+            local tr = math.random(50, 85) / 100
+            TweenService:Create(p,
+                TweenInfo.new(math.random(8,20)/10, Enum.EasingStyle.Sine),
+                {BackgroundTransparency = tr}
+            ):Play()
+            task.wait(math.random(8, 20) / 10)
+        end
+    end)
+
+    task.delay(duration, function()
+        if p and p.Parent then p:Destroy() end
+        task.wait(math.random(5, 20) / 10)
+        spawnParticle()
+    end)
+end
+
+-- Spawn initial particles
+for i = 1, 20 do
+    task.delay(i * 0.3, spawnParticle)
+end
+
+-- Pulse border stroke
+task.spawn(function()
+    while window.Parent do
+        tw(wStroke, {Transparency = 0.2},
+            TweenInfo.new(1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut))
+        task.wait(1.5)
+        tw(wStroke, {Transparency = 0.65},
+            TweenInfo.new(1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut))
+        task.wait(1.5)
+    end
+end)
+
+-- ══════════════════════════════════════════════
+--  SIDEBAR
+-- ══════════════════════════════════════════════
+
+local sidebar = Instance.new("Frame", window)
+sidebar.Name             = "Sidebar"
+sidebar.Size             = UDim2.new(0, 162, 1, 0)
+sidebar.BackgroundColor3 = Color3.fromRGB(9, 7, 22)
+sidebar.BorderSizePixel  = 0
+sidebar.ZIndex           = 5
+Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 16)
+
+-- Cover sidebar right corners
+local sfx = Instance.new("Frame", sidebar)
+sfx.Size             = UDim2.new(0, 16, 1, 0)
+sfx.Position         = UDim2.new(1, -16, 0, 0)
+sfx.BackgroundColor3 = Color3.fromRGB(9, 7, 22)
+sfx.BorderSizePixel  = 0
+sfx.ZIndex           = 5
+
+-- Brand header
+local brand = Instance.new("Frame", sidebar)
+brand.Size             = UDim2.new(1, 0, 0, 64)
+brand.BackgroundColor3 = Color3.fromRGB(12, 10, 26)
+brand.BorderSizePixel  = 0
+brand.ZIndex           = 5
+Instance.new("UICorner", brand).CornerRadius = UDim.new(0, 16)
+local bfx = Instance.new("Frame", brand)
+bfx.Size             = UDim2.new(1, 0, 0, 16)
+bfx.Position         = UDim2.new(0, 0, 1, -16)
+bfx.BackgroundColor3 = Color3.fromRGB(12, 10, 26)
+bfx.BorderSizePixel  = 0
+bfx.ZIndex           = 5
+
+local brandIco = Instance.new("TextLabel", brand)
+brandIco.Size             = UDim2.new(0, 30, 0, 30)
+brandIco.Position         = UDim2.new(0, 12, 0, 10)
+brandIco.BackgroundColor3 = Color3.fromRGB(28, 18, 58)
+brandIco.Text             = "☢"
+brandIco.TextSize         = 15
+brandIco.Font             = Enum.Font.GothamBold
+brandIco.TextColor3       = Color3.fromRGB(160, 120, 255)
+brandIco.TextXAlignment   = Enum.TextXAlignment.Center
+brandIco.ZIndex           = 5
+Instance.new("UICorner", brandIco).CornerRadius = UDim.new(0, 9)
+
+-- Animate brand icon rotation effect
+task.spawn(function()
+    while brandIco.Parent do
+        tw(brandIco, {TextColor3 = Color3.fromRGB(200, 160, 255)},
+            TweenInfo.new(1.5, Enum.EasingStyle.Sine))
+        task.wait(1.5)
+        tw(brandIco, {TextColor3 = Color3.fromRGB(120, 80, 200)},
+            TweenInfo.new(1.5, Enum.EasingStyle.Sine))
+        task.wait(1.5)
+    end
+end)
+
+local brandTitle = Instance.new("TextLabel", brand)
+brandTitle.Size             = UDim2.new(1, -50, 0, 16)
+brandTitle.Position         = UDim2.new(0, 48, 0, 12)
+brandTitle.BackgroundTransparency = 1
+brandTitle.Text             = "Thonni' Manager"
+brandTitle.TextColor3       = Color3.fromRGB(185, 165, 255)
+brandTitle.TextSize         = 11
+brandTitle.Font             = Enum.Font.GothamBold
+brandTitle.TextXAlignment   = Enum.TextXAlignment.Left
+brandTitle.ZIndex           = 5
+
+local brandVer = Instance.new("TextLabel", brand)
+brandVer.Size             = UDim2.new(1, -50, 0, 12)
+brandVer.Position         = UDim2.new(0, 48, 0, 29)
+brandVer.BackgroundTransparency = 1
+brandVer.Text             = "V3.0 · MERGE A NUKE"
+brandVer.TextColor3       = Color3.fromRGB(65, 50, 108)
+brandVer.TextSize         = 9
+brandVer.Font             = Enum.Font.GothamMedium
+brandVer.TextXAlignment   = Enum.TextXAlignment.Left
+brandVer.ZIndex           = 5
+
+-- Pages registry
+local pages        = {}
+local activeNavRef = nil
+
+local function showPage(name)
+    for n, pg in pages do
+        pg.Visible = (n == name)
+    end
+end
+
+-- Nav item builder
+local function makeNav(label, icon, yPos, pageName)
+    local row = Instance.new("Frame", sidebar)
+    row.Size             = UDim2.new(1, 0, 0, 38)
+    row.Position         = UDim2.new(0, 0, 0, yPos)
+    row.BackgroundColor3 = Color3.fromRGB(9, 7, 22)
+    row.BorderSizePixel  = 0
+    row.ZIndex           = 5
+
+    local accent = Instance.new("Frame", row)
+    accent.Size             = UDim2.new(0, 3, 0, 22)
+    accent.Position         = UDim2.new(0, 0, 0.5, -11)
+    accent.BackgroundColor3 = Color3.fromRGB(120, 80, 255)
+    accent.BackgroundTransparency = 1
+    accent.BorderSizePixel  = 0
+    accent.ZIndex           = 5
+    Instance.new("UICorner", accent).CornerRadius = UDim.new(0, 2)
+
+    local icoL = Instance.new("TextLabel", row)
+    icoL.Size             = UDim2.new(0, 22, 1, 0)
+    icoL.Position         = UDim2.new(0, 12, 0, 0)
+    icoL.BackgroundTransparency = 1
+    icoL.Text             = icon
+    icoL.TextSize         = 14
+    icoL.Font             = Enum.Font.GothamBold
+    icoL.TextColor3       = Color3.fromRGB(55, 44, 88)
+    icoL.TextXAlignment   = Enum.TextXAlignment.Center
+    icoL.ZIndex           = 5
+
+    local nameL = Instance.new("TextLabel", row)
+    nameL.Size             = UDim2.new(1, -44, 1, 0)
+    nameL.Position         = UDim2.new(0, 38, 0, 0)
+    nameL.BackgroundTransparency = 1
+    nameL.Text             = label
+    nameL.TextSize         = 11
+    nameL.Font             = Enum.Font.GothamMedium
+    nameL.TextColor3       = Color3.fromRGB(55, 44, 88)
+    nameL.TextXAlignment   = Enum.TextXAlignment.Left
+    nameL.ZIndex           = 5
+
+    local btn = Instance.new("TextButton", row)
+    btn.Size               = UDim2.new(1, 0, 1, 0)
+    btn.BackgroundTransparency = 1
+    btn.Text               = ""
+    btn.ZIndex             = 6
+
+    local function activate()
+        if activeNavRef then
+            tw(activeNavRef.accent, {BackgroundTransparency = 1})
+            tw(activeNavRef.icoL,   {TextColor3 = Color3.fromRGB(55, 44, 88)})
+            tw(activeNavRef.nameL,  {TextColor3 = Color3.fromRGB(55, 44, 88)})
+            tw(activeNavRef.row,    {BackgroundColor3 = Color3.fromRGB(9, 7, 22)})
+        end
+        tw(accent, {BackgroundTransparency = 0})
+        tw(icoL,   {TextColor3 = Color3.fromRGB(160, 120, 255)})
+        tw(nameL,  {TextColor3 = Color3.fromRGB(200, 180, 255)})
+        tw(row,    {BackgroundColor3 = Color3.fromRGB(20, 14, 40)})
+        activeNavRef = {row=row, accent=accent, icoL=icoL, nameL=nameL}
+        showPage(pageName)
+    end
+
+    btn.MouseButton1Click:Connect(activate)
+    btn.MouseEnter:Connect(function()
+        if not activeNavRef or activeNavRef.row ~= row then
+            tw(row, {BackgroundColor3 = Color3.fromRGB(14, 11, 30)})
+        end
+    end)
+    btn.MouseLeave:Connect(function()
+        if not activeNavRef or activeNavRef.row ~= row then
+            tw(row, {BackgroundColor3 = Color3.fromRGB(9, 7, 22)})
+        end
+    end)
+
+    return activate
+end
+
+local activateAuto   = makeNav("Automation", "⚡", 72,  "auto")
+local activateConfig = makeNav("Config",     "⚙",  112, "config")
+local activateInfo   = makeNav("Info",       "ℹ",  152, "info")
+
+-- Anti-AFK pill
+local afkPill = Instance.new("Frame", sidebar)
+afkPill.Size             = UDim2.new(1, -18, 0, 28)
+afkPill.Position         = UDim2.new(0, 9, 1, -38)
+afkPill.BackgroundColor3 = Color3.fromRGB(8, 24, 14)
+afkPill.BorderSizePixel  = 0
+afkPill.ZIndex           = 5
+Instance.new("UICorner", afkPill).CornerRadius = UDim.new(0, 9)
+local afkStroke = Instance.new("UIStroke", afkPill)
+afkStroke.Color       = Color3.fromRGB(55, 190, 95)
+afkStroke.Thickness   = 0.5
+afkStroke.Transparency = 0.5
+
+local afkDot = Instance.new("Frame", afkPill)
+afkDot.Size             = UDim2.new(0, 7, 0, 7)
+afkDot.Position         = UDim2.new(0, 9, 0.5, -3)
+afkDot.BackgroundColor3 = Color3.fromRGB(55, 190, 95)
+afkDot.BorderSizePixel  = 0
+afkDot.ZIndex           = 5
+Instance.new("UICorner", afkDot).CornerRadius = UDim.new(1, 0)
+
+local afkTxt = Instance.new("TextLabel", afkPill)
+afkTxt.Size             = UDim2.new(1, -24, 1, 0)
+afkTxt.Position         = UDim2.new(0, 22, 0, 0)
+afkTxt.BackgroundTransparency = 1
+afkTxt.Text             = "anti-afk active"
+afkTxt.TextColor3       = Color3.fromRGB(50, 175, 85)
+afkTxt.TextSize         = 10
+afkTxt.Font             = Enum.Font.GothamMedium
+afkTxt.TextXAlignment   = Enum.TextXAlignment.Left
+afkTxt.ZIndex           = 5
+
+-- Pulse AFK dot
+task.spawn(function()
+    while afkPill.Parent do
+        tw(afkDot, {BackgroundTransparency=0.7},
+            TweenInfo.new(0.9, Enum.EasingStyle.Sine))
+        task.wait(0.9)
+        tw(afkDot, {BackgroundTransparency=0},
+            TweenInfo.new(0.9, Enum.EasingStyle.Sine))
+        task.wait(0.9)
+    end
+end)
+
+-- ══════════════════════════════════════════════
+--  CONTENT AREA
+-- ══════════════════════════════════════════════
+
+local content = Instance.new("Frame", window)
+content.Name             = "Content"
+content.Size             = UDim2.new(1, -162, 1, 0)
+content.Position         = UDim2.new(0, 162, 0, 0)
+content.BackgroundTransparency = 1
+content.BorderSizePixel  = 0
+content.ZIndex           = 5
+
+-- Titlebar
+local titlebar = Instance.new("Frame", content)
+titlebar.Size             = UDim2.new(1, 0, 0, 42)
+titlebar.BackgroundColor3 = Color3.fromRGB(10, 9, 24)
+titlebar.BorderSizePixel  = 0
+titlebar.ZIndex           = 5
+Instance.new("UICorner", titlebar).CornerRadius = UDim.new(0, 16)
+local tbfx = Instance.new("Frame", titlebar)
+tbfx.Size             = UDim2.new(1, 0, 0, 16)
+tbfx.Position         = UDim2.new(0, 0, 1, -16)
+tbfx.BackgroundColor3 = Color3.fromRGB(10, 9, 24)
+tbfx.BorderSizePixel  = 0
+tbfx.ZIndex           = 5
+
+-- Mac-style traffic light dots (red closes, yellow minimises hint, green is decorative)
+local dotColors = {
+    Color3.fromRGB(255, 95,  87),   -- red   — close
+    Color3.fromRGB(255, 189, 46),   -- yellow
+    Color3.fromRGB(40,  200, 65),   -- green
+}
+local dotSymbols = {"✕", "–", "+"}
+local dots = {}
+
+for i, c in dotColors do
+    local dot = Instance.new("TextButton", titlebar)
+    dot.Size               = UDim2.new(0, 13, 0, 13)
+    dot.Position           = UDim2.new(0, 12 + (i-1)*18, 0.5, -6)
+    dot.BackgroundColor3   = c
+    dot.Text               = ""
+    dot.TextColor3         = Color3.fromRGB(80, 0, 0)
+    dot.TextSize           = 9
+    dot.Font               = Enum.Font.GothamBold
+    dot.BorderSizePixel    = 0
+    dot.ZIndex             = 7
+    Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+
+    -- Show symbol on hover
+    dot.MouseEnter:Connect(function()
+        dot.Text = dotSymbols[i]
+        tw(dot, {BackgroundColor3 = c:Lerp(Color3.new(0,0,0), 0.15)})
+    end)
+    dot.MouseLeave:Connect(function()
+        dot.Text = ""
+        tw(dot, {BackgroundColor3 = c})
+    end)
+
+    dots[i] = dot
+end
+
+-- Minimise restore icon (shown bottom-left when window is hidden)
+local miniBtn = Instance.new("TextButton")
+miniBtn.Size             = UDim2.new(0, 44, 0, 44)
+miniBtn.Position         = UDim2.new(0, 12, 1, -56)
+miniBtn.BackgroundColor3 = Color3.fromRGB(12, 10, 26)
+miniBtn.Text             = "☢"
+miniBtn.TextColor3       = Color3.fromRGB(150, 110, 255)
+miniBtn.TextSize         = 22
+miniBtn.Font             = Enum.Font.GothamBold
+miniBtn.BorderSizePixel  = 0
+miniBtn.ZIndex           = 20
+miniBtn.Visible          = false
+miniBtn.Parent           = sg
+Instance.new("UICorner", miniBtn).CornerRadius = UDim.new(1, 0)
+local miniStroke = Instance.new("UIStroke", miniBtn)
+miniStroke.Color       = Color3.fromRGB(120, 80, 255)
+miniStroke.Thickness   = 1.5
+miniStroke.Transparency = 0.4
+
+task.spawn(function()
+    while miniBtn.Parent do
+        if miniBtn.Visible then
+            tw(miniStroke, {Transparency=0.1}, TweenInfo.new(1, Enum.EasingStyle.Sine))
+            task.wait(1)
+            tw(miniStroke, {Transparency=0.6}, TweenInfo.new(1, Enum.EasingStyle.Sine))
+            task.wait(1)
+        else
+            task.wait(0.5)
+        end
+    end
+end)
+
+local isMinimised = false
+
+-- Yellow dot minimises
+dots[2].MouseButton1Click:Connect(function()
+    if isMinimised then return end
+    isMinimised = true
+    tw(window, {
+        Size     = UDim2.new(0, 580, 0, 0),
+        Position = UDim2.new(0.5, -290, 0.5, 0),
+    }, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In))
+    task.wait(0.32)
+    window.Visible  = false
+    miniBtn.Visible = true
+end)
+
+-- Mini button restores
+miniBtn.MouseButton1Click:Connect(function()
+    if not isMinimised then return end
+    isMinimised    = false
+    window.Visible = true
+    window.Size    = UDim2.new(0, 580, 0, 0)
+    window.Position = UDim2.new(0.5, -290, 0.5, 0)
+    miniBtn.Visible = false
+    tw(window, {
+        Size     = UDim2.new(0, 580, 0, 430),
+        Position = UDim2.new(0.5, -290, 0.5, -215),
+    }, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out))
+end)
+
+miniBtn.MouseEnter:Connect(function()
+    tw(miniBtn, {BackgroundColor3 = Color3.fromRGB(22, 18, 42)})
+end)
+miniBtn.MouseLeave:Connect(function()
+    tw(miniBtn, {BackgroundColor3 = Color3.fromRGB(12, 10, 26)})
+end)
+
+-- Red dot closes
+dots[1].MouseButton1Click:Connect(function()
+    tw(window, {
+        Position               = UDim2.new(0.5, -290, 1.6, 0),
+        BackgroundTransparency = 1,
+    }, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.In))
+    task.wait(0.45)
+    sg:Destroy()
+end)
+
+-- Welcome card
+local wCard = Instance.new("Frame", content)
+wCard.Size             = UDim2.new(1, -14, 0, 58)
+wCard.Position         = UDim2.new(0, 7, 0, 50)
+wCard.BackgroundColor3 = Color3.fromRGB(13, 11, 26)
+wCard.BorderSizePixel  = 0
+wCard.ZIndex           = 5
+Instance.new("UICorner", wCard).CornerRadius = UDim.new(0, 12)
+local wcS = Instance.new("UIStroke", wCard)
+wcS.Color       = Color3.fromRGB(120, 80, 255)
+wcS.Thickness   = 0.5
+wcS.Transparency = 0.65
+
+-- Shimmer on welcome card
+task.spawn(function()
+    while wCard.Parent do
+        tw(wcS, {Transparency=0.35},
+            TweenInfo.new(2, Enum.EasingStyle.Sine))
+        task.wait(2)
+        tw(wcS, {Transparency=0.72},
+            TweenInfo.new(2, Enum.EasingStyle.Sine))
+        task.wait(2)
+    end
+end)
+
+local avatarF = Instance.new("Frame", wCard)
+avatarF.Size             = UDim2.new(0, 40, 0, 40)
+avatarF.Position         = UDim2.new(0, 10, 0.5, -20)
+avatarF.BackgroundColor3 = Color3.fromRGB(28, 18, 55)
+avatarF.BorderSizePixel  = 0
+avatarF.ZIndex           = 5
+Instance.new("UICorner", avatarF).CornerRadius = UDim.new(1, 0)
+Instance.new("UIStroke", avatarF).Color = Color3.fromRGB(120, 80, 255)
+
+local avatarImg = Instance.new("ImageLabel", avatarF)
+avatarImg.Size               = UDim2.new(1, 0, 1, 0)
+avatarImg.BackgroundTransparency = 1
+avatarImg.Image              = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. LocalPlayer.UserId .. "&width=150&height=150&format=png"
+avatarImg.ScaleType          = Enum.ScaleType.Fit
+avatarImg.ZIndex             = 5
+Instance.new("UICorner", avatarImg).CornerRadius = UDim.new(1, 0)
+
+local greet = Instance.new("TextLabel", wCard)
+greet.Size             = UDim2.new(1, -140, 0, 14)
+greet.Position         = UDim2.new(0, 58, 0, 10)
+greet.BackgroundTransparency = 1
+greet.Text             = "welcome back,"
+greet.TextColor3       = Color3.fromRGB(90, 70, 140)
+greet.TextSize         = 10
+greet.Font             = Enum.Font.Gotham
+greet.TextXAlignment   = Enum.TextXAlignment.Left
+greet.ZIndex           = 5
+
+local dispName = Instance.new("TextLabel", wCard)
+dispName.Size             = UDim2.new(1, -140, 0, 22)
+dispName.Position         = UDim2.new(0, 58, 0, 23)
+dispName.BackgroundTransparency = 1
+dispName.Text             = LocalPlayer.DisplayName
+dispName.TextColor3       = Color3.fromRGB(210, 195, 255)
+dispName.TextSize         = 17
+dispName.Font             = Enum.Font.GothamBold
+dispName.TextXAlignment   = Enum.TextXAlignment.Left
+dispName.ZIndex           = 5
+
+local badge = Instance.new("TextLabel", wCard)
+badge.Size             = UDim2.new(0, 78, 0, 22)
+badge.Position         = UDim2.new(1, -86, 0.5, -11)
+badge.BackgroundColor3 = Color3.fromRGB(18, 12, 42)
+badge.Text             = "✓  verified"
+badge.TextColor3       = Color3.fromRGB(120, 90, 210)
+badge.TextSize         = 10
+badge.Font             = Enum.Font.Gotham
+badge.TextXAlignment   = Enum.TextXAlignment.Center
+badge.ZIndex           = 5
+Instance.new("UICorner", badge).CornerRadius = UDim.new(0, 7)
+Instance.new("UIStroke", badge).Color = Color3.fromRGB(100, 70, 200)
+
+-- Status footer
+local footer = Instance.new("Frame", content)
+footer.Size             = UDim2.new(1, 0, 0, 26)
+footer.Position         = UDim2.new(0, 0, 1, -26)
+footer.BackgroundColor3 = Color3.fromRGB(10, 9, 24)
+footer.BorderSizePixel  = 0
+footer.ZIndex           = 5
+Instance.new("UICorner", footer).CornerRadius = UDim.new(0, 16)
+local ffx = Instance.new("Frame", footer)
+ffx.Size             = UDim2.new(1, 0, 0, 14)
+ffx.BackgroundColor3 = Color3.fromRGB(10, 9, 24)
+ffx.BorderSizePixel  = 0
+ffx.ZIndex           = 5
+
+local statusDot = Instance.new("Frame", footer)
+statusDot.Size             = UDim2.new(0, 7, 0, 7)
+statusDot.Position         = UDim2.new(0, 12, 0.5, -3)
+statusDot.BackgroundColor3 = Color3.fromRGB(40, 36, 70)
+statusDot.BorderSizePixel  = 0
+statusDot.ZIndex           = 5
+Instance.new("UICorner", statusDot).CornerRadius = UDim.new(1, 0)
+
+local statusLbl = Instance.new("TextLabel", footer)
+statusLbl.Size             = UDim2.new(1, -28, 1, 0)
+statusLbl.Position         = UDim2.new(0, 24, 0, 0)
+statusLbl.BackgroundTransparency = 1
+statusLbl.Text             = "idle — enable a feature to begin"
+statusLbl.TextColor3       = Color3.fromRGB(50, 45, 82)
+statusLbl.TextSize         = 10
+statusLbl.Font             = Enum.Font.GothamMedium
+statusLbl.TextXAlignment   = Enum.TextXAlignment.Left
+statusLbl.ZIndex           = 5
+
+local function setStatus(msg, active)
+    statusLbl.Text = msg
+    tw(statusLbl, {TextColor3 = active and Color3.fromRGB(145,105,255) or Color3.fromRGB(50,45,82)})
+    tw(statusDot,  {BackgroundColor3 = active and Color3.fromRGB(120,80,255) or Color3.fromRGB(40,36,70)})
+end
+
+-- ══════════════════════════════════════════════
+--  PAGE BUILDER
+-- ══════════════════════════════════════════════
+
+local function makePage(name)
+    local pg = Instance.new("ScrollingFrame", content)
+    pg.Name                   = name
+    pg.Size                   = UDim2.new(1, -14, 1, -120)
+    pg.Position               = UDim2.new(0, 7, 0, 116)
+    pg.BackgroundTransparency = 1
+    pg.BorderSizePixel        = 0
+    pg.ScrollBarThickness     = 2
+    pg.ScrollBarImageColor3   = Color3.fromRGB(120, 80, 255)
+    pg.CanvasSize             = UDim2.new(0, 0, 0, 0)
+    pg.AutomaticCanvasSize    = Enum.AutomaticSize.Y
+    pg.ZIndex                 = 5
+    pg.Visible                = false
+    local l = Instance.new("UIListLayout", pg)
+    l.SortOrder = Enum.SortOrder.LayoutOrder
+    l.Padding   = UDim.new(0, 5)
+    pages[name] = pg
+    return pg
+end
+
+local function makeSection(parent, text, order)
+    local l = Instance.new("TextLabel", parent)
+    l.Size             = UDim2.new(1, 0, 0, 20)
+    l.BackgroundTransparency = 1
+    l.Text             = text
+    l.TextColor3       = Color3.fromRGB(78, 56, 130)
+    l.TextSize         = 9
+    l.Font             = Enum.Font.GothamBold
+    l.TextXAlignment   = Enum.TextXAlignment.Left
+    l.LayoutOrder      = order
+    l.ZIndex           = 5
+end
+
+-- Toggle builder
+local function makeToggle(parent, icon, label, desc, key, order)
+    local row = Instance.new("Frame", parent)
+    row.Size             = UDim2.new(1, 0, 0, 50)
+    row.BackgroundColor3 = Color3.fromRGB(12, 10, 24)
+    row.BorderSizePixel  = 0
+    row.LayoutOrder      = order
+    row.ZIndex           = 5
     Instance.new("UICorner", row).CornerRadius = UDim.new(0, 11)
     local rs = Instance.new("UIStroke", row)
-    rs.Color = Color3.fromRGB(255, 255, 255)
-    rs.Thickness = 0.5
-    rs.Transparency = 0.92
-    yOff += 50
+    rs.Color       = Color3.fromRGB(255, 255, 255)
+    rs.Thickness   = 0.5
+    rs.Transparency = 0.93
 
-    local lbl = Instance.new("TextLabel", row)
-    lbl.Size = UDim2.new(1, -58, 0, 18)
-    lbl.Position = UDim2.new(0, 12, 0, 6)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = labelTxt
-    lbl.TextColor3 = Color3.fromRGB(130, 120, 160)
-    lbl.TextSize = 12
-    lbl.Font = Enum.Font.GothamBold
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    local icoF = Instance.new("Frame", row)
+    icoF.Size             = UDim2.new(0, 34, 0, 34)
+    icoF.Position         = UDim2.new(0, 9, 0.5, -17)
+    icoF.BackgroundColor3 = Color3.fromRGB(18, 14, 36)
+    icoF.BorderSizePixel  = 0
+    icoF.ZIndex           = 5
+    Instance.new("UICorner", icoF).CornerRadius = UDim.new(0, 9)
+    local icoS = Instance.new("UIStroke", icoF)
+    icoS.Color       = Color3.fromRGB(255, 255, 255)
+    icoS.Thickness   = 0.5
+    icoS.Transparency = 0.9
 
-    local dl = Instance.new("TextLabel", row)
-    dl.Size = UDim2.new(1, -58, 0, 14)
-    dl.Position = UDim2.new(0, 12, 0, 24)
-    dl.BackgroundTransparency = 1
-    dl.Text = descTxt
-    dl.TextColor3 = Color3.fromRGB(50, 45, 70)
-    dl.TextSize = 10
-    dl.Font = Enum.Font.Gotham
-    dl.TextXAlignment = Enum.TextXAlignment.Left
+    local icoL = Instance.new("TextLabel", icoF)
+    icoL.Size             = UDim2.new(1, 0, 1, 0)
+    icoL.BackgroundTransparency = 1
+    icoL.Text             = icon
+    icoL.TextSize         = 16
+    icoL.Font             = Enum.Font.GothamBold
+    icoL.TextXAlignment   = Enum.TextXAlignment.Center
+    icoL.ZIndex           = 5
+
+    local lblT = Instance.new("TextLabel", row)
+    lblT.Size             = UDim2.new(1, -112, 0, 18)
+    lblT.Position         = UDim2.new(0, 50, 0, 9)
+    lblT.BackgroundTransparency = 1
+    lblT.Text             = label
+    lblT.TextColor3       = Color3.fromRGB(105, 95, 140)
+    lblT.TextSize         = 12
+    lblT.Font             = Enum.Font.GothamBold
+    lblT.TextXAlignment   = Enum.TextXAlignment.Left
+    lblT.ZIndex           = 5
+
+    local descT = Instance.new("TextLabel", row)
+    descT.Size             = UDim2.new(1, -112, 0, 14)
+    descT.Position         = UDim2.new(0, 50, 0, 27)
+    descT.BackgroundTransparency = 1
+    descT.Text             = desc
+    descT.TextColor3       = Color3.fromRGB(42, 38, 64)
+    descT.TextSize         = 10
+    descT.Font             = Enum.Font.Gotham
+    descT.TextXAlignment   = Enum.TextXAlignment.Left
+    descT.ZIndex           = 5
 
     local track = Instance.new("Frame", row)
-    track.Size = UDim2.new(0, 38, 0, 20)
-    track.Position = UDim2.new(1, -48, 0.5, -10)
-    track.BackgroundColor3 = Color3.fromRGB(22, 20, 36)
-    track.BorderSizePixel = 0
+    track.Size             = UDim2.new(0, 44, 0, 24)
+    track.Position         = UDim2.new(1, -52, 0.5, -12)
+    track.BackgroundColor3 = Color3.fromRGB(18, 16, 34)
+    track.BorderSizePixel  = 0
+    track.ZIndex           = 5
     Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
 
     local knob = Instance.new("Frame", track)
-    knob.Size = UDim2.new(0, 14, 0, 14)
-    knob.Position = UDim2.new(0, 2, 0.5, -7)
-    knob.BackgroundColor3 = Color3.fromRGB(70, 65, 100)
-    knob.BorderSizePixel = 0
+    knob.Size             = UDim2.new(0, 18, 0, 18)
+    knob.Position         = UDim2.new(0, 3, 0.5, -9)
+    knob.BackgroundColor3 = Color3.fromRGB(58, 52, 88)
+    knob.BorderSizePixel  = 0
+    knob.ZIndex           = 6
     Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
 
     local btn = Instance.new("TextButton", row)
-    btn.Size = UDim2.new(1, 0, 1, 0)
+    btn.Size               = UDim2.new(1, 0, 1, 0)
     btn.BackgroundTransparency = 1
-    btn.Text = ""
+    btn.Text               = ""
+    btn.ZIndex             = 7
 
     local on = false
     btn.MouseButton1Click:Connect(function()
         on = not on
         state[key] = on
-        TweenService:Create(track, ti, {
-            BackgroundColor3 = on
-                and Color3.fromRGB(100, 60, 220)
-                or  Color3.fromRGB(22, 20, 36)
-        }):Play()
-        TweenService:Create(knob, ti, {
-            Position = on
-                and UDim2.new(0, 20, 0.5, -7)
-                or  UDim2.new(0, 2,  0.5, -7),
-            BackgroundColor3 = on
-                and Color3.new(1, 1, 1)
-                or  Color3.fromRGB(70, 65, 100)
-        }):Play()
-        TweenService:Create(lbl, ti, {
-            TextColor3 = on
-                and Color3.fromRGB(210, 200, 255)
-                or  Color3.fromRGB(130, 120, 160)
-        }):Play()
-        TweenService:Create(rs, ti, {
-            Transparency = on and 0.65 or 0.92,
-            Color = on
-                and Color3.fromRGB(120, 80, 255)
-                or  Color3.fromRGB(255, 255, 255)
-        }):Play()
+
+        tw(track, {BackgroundColor3 = on and Color3.fromRGB(95,55,225) or Color3.fromRGB(18,16,34)}, snappy)
+        tw(knob, {
+            Position = on and UDim2.new(0,22,0.5,-9) or UDim2.new(0,3,0.5,-9),
+            BackgroundColor3 = on and Color3.new(1,1,1) or Color3.fromRGB(58,52,88)
+        }, snappy)
+        tw(lblT,  {TextColor3 = on and Color3.fromRGB(215,200,255) or Color3.fromRGB(105,95,140)})
+        tw(descT, {TextColor3 = on and Color3.fromRGB(110,82,175)  or Color3.fromRGB(42,38,64)})
+        tw(rs,    {Transparency=on and 0.58 or 0.93, Color=on and Color3.fromRGB(120,80,255) or Color3.fromRGB(255,255,255)}, snappy)
+        tw(icoF,  {BackgroundColor3 = on and Color3.fromRGB(28,16,58) or Color3.fromRGB(18,14,36)})
+        tw(icoS,  {Transparency=on and 0.5 or 0.9, Color=on and Color3.fromRGB(120,80,255) or Color3.fromRGB(255,255,255)}, snappy)
+        tw(row,   {BackgroundColor3 = on and Color3.fromRGB(15,12,28) or Color3.fromRGB(12,10,24)})
+
+        setStatus((on and "● " or "○ ") .. label .. (on and " active" or " disabled"), on)
+    end)
+
+    btn.MouseEnter:Connect(function()
+        if not on then tw(row, {BackgroundColor3 = Color3.fromRGB(15,12,28)}) end
+    end)
+    btn.MouseLeave:Connect(function()
+        if not on then tw(row, {BackgroundColor3 = Color3.fromRGB(12,10,24)}) end
     end)
 end
 
-makeToggle("Auto Merge",     "teleports between nuke pairs", "autoMerge")
-makeToggle("Lock Base",      "fires RequestLockBase / 3s",   "lockBase")
-makeToggle("Upgrade — Max",  "buys max nuke slots",          "upgradeMax")
-makeToggle("Upgrade — Tier", "buys next tier unlock",        "upgradeTier")
-makeToggle("Upgrade — Lock", "buys lockbase upgrade",        "upgradeLock")
+-- ── Automation page ───────────────────────────
+local pgAuto = makePage("auto")
+makeSection(pgAuto, "   CORE", 1)
+makeToggle(pgAuto, "⚡", "Auto Merge",     "teleports character between nuke pairs",     "autoMerge",   2)
+makeToggle(pgAuto, "🔒", "Lock Base",      "fires RequestLockBase every 3s",             "lockBase",    3)
+makeToggle(pgAuto, "🔄", "Auto Rebirth",   "fires RequestRebirth on set interval",        "autoRebirth", 4)
+makeSection(pgAuto, "   UPGRADES", 5)
+makeToggle(pgAuto, "📈", "Upgrade — Max",  "auto-buys max nuke pad slots",               "upgradeMax",  6)
+makeToggle(pgAuto, "⬆",  "Upgrade — Tier", "auto-buys next tier unlock",                 "upgradeTier", 7)
+makeToggle(pgAuto, "🛡",  "Upgrade — Lock", "auto-buys lockbase upgrade",                 "upgradeLock", 8)
 
--- Anti-AFK row (display only — always active)
-local afkRow = Instance.new("Frame", frame)
-afkRow.Size = UDim2.new(1, -16, 0, 30)
-afkRow.Position = UDim2.new(0, 8, 0, yOff + 4)
-afkRow.BackgroundColor3 = Color3.fromRGB(10, 20, 14)
-afkRow.BorderSizePixel = 0
-Instance.new("UICorner", afkRow).CornerRadius = UDim.new(0, 9)
-local afkStroke = Instance.new("UIStroke", afkRow)
-afkStroke.Color = Color3.fromRGB(60, 200, 100)
-afkStroke.Thickness = 0.5
-afkStroke.Transparency = 0.6
+-- ── Config page ───────────────────────────────
+local pgConfig = makePage("config")
 
-local afkLbl = Instance.new("TextLabel", afkRow)
-afkLbl.Size = UDim2.new(1, -12, 1, 0)
-afkLbl.Position = UDim2.new(0, 10, 0, 0)
-afkLbl.BackgroundTransparency = 1
-afkLbl.Text = "● Anti-AFK — always active"
-afkLbl.TextColor3 = Color3.fromRGB(60, 200, 100)
-afkLbl.TextSize = 11
-afkLbl.Font = Enum.Font.GothamMedium
-afkLbl.TextXAlignment = Enum.TextXAlignment.Left
+-- Speed presets: multiplier applied to all timing values
+-- Slow=2x, Normal=1x, Fast=0.5x, Turbo=0.25x
+local SPEED_PRESETS = {
+    {label="🐢  Slow",   mult=2.0,  desc="easy on the server"},
+    {label="⚡  Normal",  mult=1.0,  desc="recommended"},
+    {label="🚀  Fast",   mult=0.5,  desc="twice as fast"},
+    {label="⚠️  Turbo",  mult=0.25, desc="may cause issues"},
+}
 
--- Slide in animation
-frame.Position = UDim2.new(-0.25, 0, 0.5, -170)
-TweenService:Create(frame,
-    TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-    { Position = UDim2.new(0, 16, 0.5, -170) }
-):Play()
+local BASE_TIMINGS = {
+    PICKUP_WAIT      = 0.8,
+    MERGE_WAIT       = 0.8,
+    SCAN_DELAY       = 1.0,
+    LOCK_INTERVAL    = 3.0,
+    UPGRADE_INTERVAL = 2.0,
+    REBIRTH_INTERVAL = 5.0,
+}
 
--- ══════════════════════════════════════════
+local currentPreset = 2 -- Normal by default
+
+local function applySpeedPreset(index)
+    currentPreset = index
+    local mult = SPEED_PRESETS[index].mult
+    CFG.PICKUP_WAIT      = math.max(0.1, BASE_TIMINGS.PICKUP_WAIT      * mult)
+    CFG.MERGE_WAIT       = math.max(0.1, BASE_TIMINGS.MERGE_WAIT       * mult)
+    CFG.SCAN_DELAY       = math.max(0.2, BASE_TIMINGS.SCAN_DELAY       * mult)
+    CFG.LOCK_INTERVAL    = math.max(1.0, BASE_TIMINGS.LOCK_INTERVAL    * mult)
+    CFG.UPGRADE_INTERVAL = math.max(0.5, BASE_TIMINGS.UPGRADE_INTERVAL * mult)
+    CFG.REBIRTH_INTERVAL = math.max(1.0, BASE_TIMINGS.REBIRTH_INTERVAL * mult)
+end
+
+-- Speed selector card
+local speedCard = Instance.new("Frame", pgConfig)
+speedCard.Size             = UDim2.new(1, 0, 0, 100)
+speedCard.BackgroundColor3 = Color3.fromRGB(12, 10, 24)
+speedCard.BorderSizePixel  = 0
+speedCard.LayoutOrder      = 1
+speedCard.ZIndex           = 5
+Instance.new("UICorner", speedCard).CornerRadius = UDim.new(0, 12)
+local spStroke = Instance.new("UIStroke", speedCard)
+spStroke.Color       = Color3.fromRGB(120, 80, 255)
+spStroke.Thickness   = 0.5
+spStroke.Transparency = 0.75
+
+local speedTitle = Instance.new("TextLabel", speedCard)
+speedTitle.Size             = UDim2.new(1, -16, 0, 20)
+speedTitle.Position         = UDim2.new(0, 12, 0, 8)
+speedTitle.BackgroundTransparency = 1
+speedTitle.Text             = "Overall Speed"
+speedTitle.TextColor3       = Color3.fromRGB(175, 155, 255)
+speedTitle.TextSize         = 12
+speedTitle.Font             = Enum.Font.GothamBold
+speedTitle.TextXAlignment   = Enum.TextXAlignment.Left
+speedTitle.ZIndex           = 5
+
+local speedDesc = Instance.new("TextLabel", speedCard)
+speedDesc.Size             = UDim2.new(1, -16, 0, 14)
+speedDesc.Position         = UDim2.new(0, 12, 0, 26)
+speedDesc.BackgroundTransparency = 1
+speedDesc.Text             = "scales all timing values at once"
+speedDesc.TextColor3       = Color3.fromRGB(70, 58, 110)
+speedDesc.TextSize         = 10
+speedDesc.Font             = Enum.Font.Gotham
+speedDesc.TextXAlignment   = Enum.TextXAlignment.Left
+speedDesc.ZIndex           = 5
+
+-- Preset buttons
+local presetBtns = {}
+for i, preset in SPEED_PRESETS do
+    local btn = Instance.new("TextButton", speedCard)
+    btn.Size             = UDim2.new(0, 88, 0, 28)
+    btn.Position         = UDim2.new(0, 8 + (i-1)*94, 0, 58)
+    btn.BackgroundColor3 = Color3.fromRGB(18, 15, 36)
+    btn.Text             = preset.label
+    btn.TextColor3       = Color3.fromRGB(90, 78, 135)
+    btn.TextSize         = 10
+    btn.Font             = Enum.Font.GothamMedium
+    btn.BorderSizePixel  = 0
+    btn.ZIndex           = 6
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+    local bs = Instance.new("UIStroke", btn)
+    bs.Color       = Color3.fromRGB(255, 255, 255)
+    bs.Thickness   = 0.5
+    bs.Transparency = 0.88
+    presetBtns[i] = {btn=btn, stroke=bs}
+
+    btn.MouseButton1Click:Connect(function()
+        -- deselect all
+        for j, pb in presetBtns do
+            tw(pb.btn,    {BackgroundColor3 = Color3.fromRGB(18,15,36), TextColor3 = Color3.fromRGB(90,78,135)})
+            tw(pb.stroke, {Transparency=0.88, Color=Color3.fromRGB(255,255,255)})
+        end
+        -- select this one
+        tw(btn,    {BackgroundColor3 = Color3.fromRGB(55,30,130), TextColor3 = Color3.fromRGB(210,190,255)}, snappy)
+        tw(bs,     {Transparency=0.45, Color=Color3.fromRGB(140,100,255)}, snappy)
+        speedDesc.Text = preset.desc
+        applySpeedPreset(i)
+    end)
+
+    btn.MouseEnter:Connect(function()
+        if currentPreset ~= i then
+            tw(btn, {BackgroundColor3 = Color3.fromRGB(24,20,46)})
+        end
+    end)
+    btn.MouseLeave:Connect(function()
+        if currentPreset ~= i then
+            tw(btn, {BackgroundColor3 = Color3.fromRGB(18,15,36)})
+        end
+    end)
+end
+
+-- Select Normal by default
+tw(presetBtns[2].btn,    {BackgroundColor3=Color3.fromRGB(55,30,130), TextColor3=Color3.fromRGB(210,190,255)})
+tw(presetBtns[2].stroke, {Transparency=0.45, Color=Color3.fromRGB(140,100,255)})
+
+-- Float height row (standalone, doesn't scale with speed)
+makeSection(pgConfig, "   MISC", 2)
+
+local floatRow = Instance.new("Frame", pgConfig)
+floatRow.Size             = UDim2.new(1, 0, 0, 46)
+floatRow.BackgroundColor3 = Color3.fromRGB(12, 10, 24)
+floatRow.BorderSizePixel  = 0
+floatRow.LayoutOrder      = 3
+floatRow.ZIndex           = 5
+Instance.new("UICorner", floatRow).CornerRadius = UDim.new(0, 11)
+Instance.new("UIStroke", floatRow).Transparency = 0.92
+
+local floatLbl = Instance.new("TextLabel", floatRow)
+floatLbl.Size             = UDim2.new(1, -96, 1, 0)
+floatLbl.Position         = UDim2.new(0, 12, 0, 0)
+floatLbl.BackgroundTransparency = 1
+floatLbl.Text             = "Float Height (studs)"
+floatLbl.TextColor3       = Color3.fromRGB(130, 115, 175)
+floatLbl.TextSize         = 11
+floatLbl.Font             = Enum.Font.GothamMedium
+floatLbl.TextXAlignment   = Enum.TextXAlignment.Left
+floatLbl.ZIndex           = 5
+
+local floatBox = Instance.new("TextBox", floatRow)
+floatBox.Size             = UDim2.new(0, 72, 0, 30)
+floatBox.Position         = UDim2.new(1, -80, 0.5, -15)
+floatBox.BackgroundColor3 = Color3.fromRGB(16, 13, 34)
+floatBox.Text             = tostring(CFG.FLOAT_HEIGHT)
+floatBox.TextColor3       = Color3.fromRGB(175, 150, 255)
+floatBox.TextSize         = 13
+floatBox.Font             = Enum.Font.GothamBold
+floatBox.ClearTextOnFocus = false
+floatBox.TextXAlignment   = Enum.TextXAlignment.Center
+floatBox.BorderSizePixel  = 0
+floatBox.ZIndex           = 6
+Instance.new("UICorner", floatBox).CornerRadius = UDim.new(0, 9)
+local fbs = Instance.new("UIStroke", floatBox)
+fbs.Color       = Color3.fromRGB(120, 80, 255)
+fbs.Thickness   = 0.5
+fbs.Transparency = 0.65
+
+floatBox.Focused:Connect(function()
+    tw(fbs,      {Transparency=0.2})
+    tw(floatBox, {BackgroundColor3=Color3.fromRGB(22,18,48)})
+end)
+floatBox.FocusLost:Connect(function()
+    tw(fbs,      {Transparency=0.65})
+    tw(floatBox, {BackgroundColor3=Color3.fromRGB(16,13,34)})
+    local n = tonumber(floatBox.Text)
+    if n and n >= 0 then
+        CFG.FLOAT_HEIGHT = n
+        floatBox.Text    = tostring(n)
+        tw(floatBox, {BackgroundColor3=Color3.fromRGB(14,34,20)})
+        task.wait(0.5)
+        tw(floatBox, {BackgroundColor3=Color3.fromRGB(16,13,34)})
+    else
+        floatBox.Text = tostring(CFG.FLOAT_HEIGHT)
+    end
+end)
+
+-- ── Info page ─────────────────────────────────
+local pgInfo = makePage("info")
+
+local infoCard = Instance.new("Frame", pgInfo)
+infoCard.Size             = UDim2.new(1, 0, 0, 200)
+infoCard.BackgroundColor3 = Color3.fromRGB(12, 10, 24)
+infoCard.BorderSizePixel  = 0
+infoCard.LayoutOrder      = 1
+infoCard.ZIndex           = 5
+Instance.new("UICorner", infoCard).CornerRadius = UDim.new(0, 12)
+Instance.new("UIStroke", infoCard).Color = Color3.fromRGB(120, 80, 255)
+
+local infoT = Instance.new("TextLabel", infoCard)
+infoT.Size             = UDim2.new(1, -20, 1, -16)
+infoT.Position         = UDim2.new(0, 10, 0, 10)
+infoT.BackgroundTransparency = 1
+infoT.Text             = "Thonni' Manager  v3.0\n\n● Auto Merge — teleports your character between matching nuke pairs to trigger merges without walking.\n\n● Auto Rebirth — fires RequestRebirth on the configured interval.\n\n● Config — all timing values update live. No restart needed.\n\n● Anti-AFK — always active in the background."
+infoT.TextColor3       = Color3.fromRGB(105, 90, 150)
+infoT.TextSize         = 11
+infoT.Font             = Enum.Font.Gotham
+infoT.TextXAlignment   = Enum.TextXAlignment.Left
+infoT.TextYAlignment   = Enum.TextYAlignment.Top
+infoT.TextWrapped      = true
+infoT.ZIndex           = 5
+
+-- Activate first page
+activateAuto()
+
+-- ══════════════════════════════════════════════
 --  FLOAT LOOP
--- ══════════════════════════════════════════
+-- ══════════════════════════════════════════════
 
 RunService.Heartbeat:Connect(function()
     if not state.isFloating or not state.idlePos then return end
@@ -267,14 +1084,14 @@ RunService.Heartbeat:Connect(function()
     if not char then return end
     local root = char:FindFirstChild("HumanoidRootPart")
     if not root then return end
-    root.CFrame = CFrame.new(state.idlePos)
+    root.CFrame                  = CFrame.new(state.idlePos)
     root.AssemblyLinearVelocity  = Vector3.zero
     root.AssemblyAngularVelocity = Vector3.zero
 end)
 
--- ══════════════════════════════════════════
+-- ══════════════════════════════════════════════
 --  HELPERS
--- ══════════════════════════════════════════
+-- ══════════════════════════════════════════════
 
 local function GetMyNukes()
     local char = LocalPlayer.Character
@@ -311,9 +1128,7 @@ end
 
 local function PadCenter(nukes)
     local total, c = Vector3.zero, 0
-    for _, n in nukes:GetChildren() do
-        total += n.Position; c += 1
-    end
+    for _, n in nukes:GetChildren() do total += n.Position; c += 1 end
     if c == 0 then return nil end
     local v = total / c
     return Vector3.new(v.X, v.Y + CFG.FLOAT_HEIGHT, v.Z)
@@ -324,7 +1139,7 @@ local function TP(pos)
     if not char then return end
     local root = char:FindFirstChild("HumanoidRootPart")
     if not root then return end
-    root.CFrame = CFrame.new(pos)
+    root.CFrame                  = CFrame.new(pos)
     root.AssemblyLinearVelocity  = Vector3.zero
     root.AssemblyAngularVelocity = Vector3.zero
 end
@@ -336,85 +1151,61 @@ local function DropNuke()
     task.wait(0.2)
 end
 
--- ══════════════════════════════════════════
---  AUTO MERGE LOOP
--- ══════════════════════════════════════════
+-- ══════════════════════════════════════════════
+--  AUTOMATION LOOPS
+-- ══════════════════════════════════════════════
 
 task.spawn(function()
     while true do
         if state.autoMerge then
             local nukes = GetMyNukes()
             if not nukes then task.wait(CFG.SCAN_DELAY) continue end
-
             local a, b = FindPair(nukes)
             if not a then
                 state.isFloating = true
                 state.idlePos    = PadCenter(nukes)
-                setStatus("waiting for pair...", true)
                 DropNuke()
                 task.wait(CFG.SCAN_DELAY)
                 continue
             end
-
             state.isFloating = false
-            setStatus("merging tier " .. tostring(a:GetAttribute("Tier")), true)
-
             DropNuke()
             local fp = PadCenter(nukes)
-            if fp then TP(fp) task.wait(0.2) end
-
-            TP(a.Position)
-            task.wait(CFG.PICKUP_WAIT)
-
+            if fp then TP(fp); task.wait(0.2) end
+            TP(a.Position); task.wait(CFG.PICKUP_WAIT)
             if b and b.Parent then
-                TP(b.Position)
-                task.wait(CFG.MERGE_WAIT)
-                setStatus("merge done ✓", true)
+                TP(b.Position); task.wait(CFG.MERGE_WAIT)
             else
-                setStatus("retrying...", true)
                 DropNuke()
             end
         else
             state.isFloating = false
-            setStatus("idle", false)
             task.wait(0.5)
         end
     end
 end)
 
--- ══════════════════════════════════════════
---  LOCK BASE LOOP
--- ══════════════════════════════════════════
-
 task.spawn(function()
     while true do
-        if state.lockBase then
-            LockBaseRemote:FireServer()
-        end
+        if state.lockBase then LockBaseRemote:FireServer() end
         task.wait(CFG.LOCK_INTERVAL)
     end
 end)
 
--- ══════════════════════════════════════════
---  AUTO UPGRADE LOOP
--- ══════════════════════════════════════════
+task.spawn(function()
+    while true do
+        if state.autoRebirth then RebirthRemote:FireServer() end
+        task.wait(CFG.REBIRTH_INTERVAL)
+    end
+end)
 
 task.spawn(function()
     while true do
-        if state.upgradeMax  then
-            PurchaseUpgrade:FireServer("MAX")
-            task.wait(0.3)
-        end
-        if state.upgradeTier then
-            PurchaseUpgrade:FireServer("TIER")
-            task.wait(0.3)
-        end
-        if state.upgradeLock then
-            PurchaseUpgrade:FireServer("LOCKBASE")
-            task.wait(0.3)
-        end
+        if state.upgradeMax  then PurchaseUpgrade:FireServer("MAX");      task.wait(0.3) end
+        if state.upgradeTier then PurchaseUpgrade:FireServer("TIER");     task.wait(0.3) end
+        if state.upgradeLock then PurchaseUpgrade:FireServer("LOCKBASE"); task.wait(0.3) end
         task.wait(CFG.UPGRADE_INTERVAL)
     end
 end)
 
-print("[NukeManager] Loaded! Anti-AFK active.")
+print("[Thonni' Manager v3] Loaded! Welcome, " .. LocalPlayer.DisplayName .. " ☢")
