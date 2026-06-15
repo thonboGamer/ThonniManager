@@ -1,0 +1,420 @@
+-- ╔══════════════════════════════════════════╗
+-- ║        NUKE MANAGER  —  Final            ║
+-- ║  Auto Merge · Lock Base · Auto Upgrade   ║
+-- ║  Anti-AFK · Float Lock                   ║
+-- ╚══════════════════════════════════════════╝
+
+-- ── Anti-AFK ──────────────────────────────
+local VirtualUser = game:GetService("VirtualUser")
+game:GetService("Players").LocalPlayer.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+end)
+
+-- ── Services ──────────────────────────────
+local Players      = game:GetService("Players")
+local RunService   = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local LocalPlayer  = Players.LocalPlayer
+local NukeRemotes  = game:GetService("ReplicatedStorage").NukeRemotes
+
+-- ── Remotes ───────────────────────────────
+local Drop            = NukeRemotes.Drop
+local LockBaseRemote  = NukeRemotes.RequestLockBase
+local PurchaseUpgrade = NukeRemotes.PurchaseUpgrade
+
+-- ── Config ────────────────────────────────
+local CFG = {
+    PICKUP_WAIT      = 0.8,
+    MERGE_WAIT       = 0.8,
+    SCAN_DELAY       = 1,
+    LOCK_INTERVAL    = 3,
+    UPGRADE_INTERVAL = 2,
+    FLOAT_HEIGHT     = 20,
+}
+
+-- ── State ─────────────────────────────────
+local state = {
+    autoMerge   = false,
+    lockBase    = false,
+    upgradeMax  = false,
+    upgradeTier = false,
+    upgradeLock = false,
+    isFloating  = false,
+    idlePos     = nil,
+}
+
+-- ══════════════════════════════════════════
+--  GUI
+-- ══════════════════════════════════════════
+
+local sg = Instance.new("ScreenGui")
+sg.Name = "NukeManager"
+sg.ResetOnSpawn = false
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+sg.Parent = game:GetService("CoreGui")
+
+-- Main frame
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 240, 0, 340)
+frame.Position = UDim2.new(0, 16, 0.5, -170)
+frame.BackgroundColor3 = Color3.fromRGB(8, 8, 18)
+frame.BorderSizePixel = 0
+frame.Active = true
+frame.Draggable = true
+frame.Parent = sg
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 16)
+
+local stroke = Instance.new("UIStroke", frame)
+stroke.Color = Color3.fromRGB(120, 80, 255)
+stroke.Thickness = 1
+stroke.Transparency = 0.5
+
+-- Animate border glow
+RunService.Heartbeat:Connect(function()
+    stroke.Transparency = 0.35 + math.sin(tick() * 2) * 0.25
+end)
+
+-- Header
+local hdr = Instance.new("Frame", frame)
+hdr.Size = UDim2.new(1, 0, 0, 72)
+hdr.BackgroundColor3 = Color3.fromRGB(12, 10, 24)
+hdr.BorderSizePixel = 0
+Instance.new("UICorner", hdr).CornerRadius = UDim.new(0, 16)
+local hfix = Instance.new("Frame", hdr)
+hfix.Size = UDim2.new(1, 0, 0, 16)
+hfix.Position = UDim2.new(0, 0, 1, -16)
+hfix.BackgroundColor3 = Color3.fromRGB(12, 10, 24)
+hfix.BorderSizePixel = 0
+
+local ico = Instance.new("TextLabel", hdr)
+ico.Size = UDim2.new(0, 32, 0, 32)
+ico.Position = UDim2.new(0, 12, 0, 10)
+ico.BackgroundColor3 = Color3.fromRGB(30, 20, 60)
+ico.Text = "☢"
+ico.TextSize = 16
+ico.Font = Enum.Font.GothamBold
+ico.TextColor3 = Color3.fromRGB(160, 120, 255)
+ico.TextXAlignment = Enum.TextXAlignment.Center
+Instance.new("UICorner", ico).CornerRadius = UDim.new(0, 9)
+
+local htitle = Instance.new("TextLabel", hdr)
+htitle.Size = UDim2.new(1, -70, 0, 18)
+htitle.Position = UDim2.new(0, 52, 0, 11)
+htitle.BackgroundTransparency = 1
+htitle.Text = "Nuke Manager"
+htitle.TextColor3 = Color3.fromRGB(220, 210, 255)
+htitle.TextSize = 13
+htitle.Font = Enum.Font.GothamBold
+htitle.TextXAlignment = Enum.TextXAlignment.Left
+
+local hsub = Instance.new("TextLabel", hdr)
+hsub.Size = UDim2.new(1, -70, 0, 14)
+hsub.Position = UDim2.new(0, 52, 0, 28)
+hsub.BackgroundTransparency = 1
+hsub.Text = "automation suite"
+hsub.TextColor3 = Color3.fromRGB(70, 60, 100)
+hsub.TextSize = 10
+hsub.Font = Enum.Font.Gotham
+hsub.TextXAlignment = Enum.TextXAlignment.Left
+
+local statusLbl = Instance.new("TextLabel", hdr)
+statusLbl.Size = UDim2.new(1, -16, 0, 14)
+statusLbl.Position = UDim2.new(0, 12, 0, 52)
+statusLbl.BackgroundTransparency = 1
+statusLbl.Text = "● idle"
+statusLbl.TextColor3 = Color3.fromRGB(60, 55, 90)
+statusLbl.TextSize = 10
+statusLbl.Font = Enum.Font.GothamMedium
+statusLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+local function setStatus(msg, active)
+    statusLbl.Text = (active and "● " or "○ ") .. msg
+    statusLbl.TextColor3 = active
+        and Color3.fromRGB(140, 100, 255)
+        or  Color3.fromRGB(60, 55, 90)
+end
+
+-- ── Toggle builder ────────────────────────
+local yOff = 80
+local ti = TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+
+local function makeToggle(labelTxt, descTxt, key)
+    local row = Instance.new("Frame", frame)
+    row.Size = UDim2.new(1, -16, 0, 44)
+    row.Position = UDim2.new(0, 8, 0, yOff)
+    row.BackgroundColor3 = Color3.fromRGB(14, 12, 26)
+    row.BorderSizePixel = 0
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 11)
+    local rs = Instance.new("UIStroke", row)
+    rs.Color = Color3.fromRGB(255, 255, 255)
+    rs.Thickness = 0.5
+    rs.Transparency = 0.92
+    yOff += 50
+
+    local lbl = Instance.new("TextLabel", row)
+    lbl.Size = UDim2.new(1, -58, 0, 18)
+    lbl.Position = UDim2.new(0, 12, 0, 6)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = labelTxt
+    lbl.TextColor3 = Color3.fromRGB(130, 120, 160)
+    lbl.TextSize = 12
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local dl = Instance.new("TextLabel", row)
+    dl.Size = UDim2.new(1, -58, 0, 14)
+    dl.Position = UDim2.new(0, 12, 0, 24)
+    dl.BackgroundTransparency = 1
+    dl.Text = descTxt
+    dl.TextColor3 = Color3.fromRGB(50, 45, 70)
+    dl.TextSize = 10
+    dl.Font = Enum.Font.Gotham
+    dl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local track = Instance.new("Frame", row)
+    track.Size = UDim2.new(0, 38, 0, 20)
+    track.Position = UDim2.new(1, -48, 0.5, -10)
+    track.BackgroundColor3 = Color3.fromRGB(22, 20, 36)
+    track.BorderSizePixel = 0
+    Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+
+    local knob = Instance.new("Frame", track)
+    knob.Size = UDim2.new(0, 14, 0, 14)
+    knob.Position = UDim2.new(0, 2, 0.5, -7)
+    knob.BackgroundColor3 = Color3.fromRGB(70, 65, 100)
+    knob.BorderSizePixel = 0
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+
+    local btn = Instance.new("TextButton", row)
+    btn.Size = UDim2.new(1, 0, 1, 0)
+    btn.BackgroundTransparency = 1
+    btn.Text = ""
+
+    local on = false
+    btn.MouseButton1Click:Connect(function()
+        on = not on
+        state[key] = on
+        TweenService:Create(track, ti, {
+            BackgroundColor3 = on
+                and Color3.fromRGB(100, 60, 220)
+                or  Color3.fromRGB(22, 20, 36)
+        }):Play()
+        TweenService:Create(knob, ti, {
+            Position = on
+                and UDim2.new(0, 20, 0.5, -7)
+                or  UDim2.new(0, 2,  0.5, -7),
+            BackgroundColor3 = on
+                and Color3.new(1, 1, 1)
+                or  Color3.fromRGB(70, 65, 100)
+        }):Play()
+        TweenService:Create(lbl, ti, {
+            TextColor3 = on
+                and Color3.fromRGB(210, 200, 255)
+                or  Color3.fromRGB(130, 120, 160)
+        }):Play()
+        TweenService:Create(rs, ti, {
+            Transparency = on and 0.65 or 0.92,
+            Color = on
+                and Color3.fromRGB(120, 80, 255)
+                or  Color3.fromRGB(255, 255, 255)
+        }):Play()
+    end)
+end
+
+makeToggle("Auto Merge",     "teleports between nuke pairs", "autoMerge")
+makeToggle("Lock Base",      "fires RequestLockBase / 3s",   "lockBase")
+makeToggle("Upgrade — Max",  "buys max nuke slots",          "upgradeMax")
+makeToggle("Upgrade — Tier", "buys next tier unlock",        "upgradeTier")
+makeToggle("Upgrade — Lock", "buys lockbase upgrade",        "upgradeLock")
+
+-- Anti-AFK row (display only — always active)
+local afkRow = Instance.new("Frame", frame)
+afkRow.Size = UDim2.new(1, -16, 0, 30)
+afkRow.Position = UDim2.new(0, 8, 0, yOff + 4)
+afkRow.BackgroundColor3 = Color3.fromRGB(10, 20, 14)
+afkRow.BorderSizePixel = 0
+Instance.new("UICorner", afkRow).CornerRadius = UDim.new(0, 9)
+local afkStroke = Instance.new("UIStroke", afkRow)
+afkStroke.Color = Color3.fromRGB(60, 200, 100)
+afkStroke.Thickness = 0.5
+afkStroke.Transparency = 0.6
+
+local afkLbl = Instance.new("TextLabel", afkRow)
+afkLbl.Size = UDim2.new(1, -12, 1, 0)
+afkLbl.Position = UDim2.new(0, 10, 0, 0)
+afkLbl.BackgroundTransparency = 1
+afkLbl.Text = "● Anti-AFK — always active"
+afkLbl.TextColor3 = Color3.fromRGB(60, 200, 100)
+afkLbl.TextSize = 11
+afkLbl.Font = Enum.Font.GothamMedium
+afkLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+-- Slide in animation
+frame.Position = UDim2.new(-0.25, 0, 0.5, -170)
+TweenService:Create(frame,
+    TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+    { Position = UDim2.new(0, 16, 0.5, -170) }
+):Play()
+
+-- ══════════════════════════════════════════
+--  FLOAT LOOP
+-- ══════════════════════════════════════════
+
+RunService.Heartbeat:Connect(function()
+    if not state.isFloating or not state.idlePos then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    root.CFrame = CFrame.new(state.idlePos)
+    root.AssemblyLinearVelocity  = Vector3.zero
+    root.AssemblyAngularVelocity = Vector3.zero
+end)
+
+-- ══════════════════════════════════════════
+--  HELPERS
+-- ══════════════════════════════════════════
+
+local function GetMyNukes()
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    local myPos = char.HumanoidRootPart.Position
+    local best, bd = nil, math.huge
+    for _, base in game.Workspace.Bases:GetChildren() do
+        local nukes = base:FindFirstChild("Nukes")
+        if nukes then
+            for _, nuke in nukes:GetChildren() do
+                local d = (nuke.Position - myPos).Magnitude
+                if d < bd then bd = d; best = nukes end
+            end
+        end
+    end
+    return best
+end
+
+local function FindPair(nukes)
+    local g = {}
+    for _, nuke in nukes:GetChildren() do
+        local t = nuke:GetAttribute("Tier")
+        if t then
+            if not g[t] then g[t] = {} end
+            table.insert(g[t], nuke)
+        end
+    end
+    local lt, pair = math.huge, nil
+    for t, list in g do
+        if #list >= 2 and t < lt then lt = t; pair = list end
+    end
+    if pair then return pair[1], pair[2] end
+end
+
+local function PadCenter(nukes)
+    local total, c = Vector3.zero, 0
+    for _, n in nukes:GetChildren() do
+        total += n.Position; c += 1
+    end
+    if c == 0 then return nil end
+    local v = total / c
+    return Vector3.new(v.X, v.Y + CFG.FLOAT_HEIGHT, v.Z)
+end
+
+local function TP(pos)
+    local char = LocalPlayer.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    root.CFrame = CFrame.new(pos)
+    root.AssemblyLinearVelocity  = Vector3.zero
+    root.AssemblyAngularVelocity = Vector3.zero
+end
+
+local function DropNuke()
+    local char = LocalPlayer.Character
+    if not char then return end
+    Drop:FireServer(CFrame.new(char.HumanoidRootPart.Position))
+    task.wait(0.2)
+end
+
+-- ══════════════════════════════════════════
+--  AUTO MERGE LOOP
+-- ══════════════════════════════════════════
+
+task.spawn(function()
+    while true do
+        if state.autoMerge then
+            local nukes = GetMyNukes()
+            if not nukes then task.wait(CFG.SCAN_DELAY) continue end
+
+            local a, b = FindPair(nukes)
+            if not a then
+                state.isFloating = true
+                state.idlePos    = PadCenter(nukes)
+                setStatus("waiting for pair...", true)
+                DropNuke()
+                task.wait(CFG.SCAN_DELAY)
+                continue
+            end
+
+            state.isFloating = false
+            setStatus("merging tier " .. tostring(a:GetAttribute("Tier")), true)
+
+            DropNuke()
+            local fp = PadCenter(nukes)
+            if fp then TP(fp) task.wait(0.2) end
+
+            TP(a.Position)
+            task.wait(CFG.PICKUP_WAIT)
+
+            if b and b.Parent then
+                TP(b.Position)
+                task.wait(CFG.MERGE_WAIT)
+                setStatus("merge done ✓", true)
+            else
+                setStatus("retrying...", true)
+                DropNuke()
+            end
+        else
+            state.isFloating = false
+            setStatus("idle", false)
+            task.wait(0.5)
+        end
+    end
+end)
+
+-- ══════════════════════════════════════════
+--  LOCK BASE LOOP
+-- ══════════════════════════════════════════
+
+task.spawn(function()
+    while true do
+        if state.lockBase then
+            LockBaseRemote:FireServer()
+        end
+        task.wait(CFG.LOCK_INTERVAL)
+    end
+end)
+
+-- ══════════════════════════════════════════
+--  AUTO UPGRADE LOOP
+-- ══════════════════════════════════════════
+
+task.spawn(function()
+    while true do
+        if state.upgradeMax  then
+            PurchaseUpgrade:FireServer("MAX")
+            task.wait(0.3)
+        end
+        if state.upgradeTier then
+            PurchaseUpgrade:FireServer("TIER")
+            task.wait(0.3)
+        end
+        if state.upgradeLock then
+            PurchaseUpgrade:FireServer("LOCKBASE")
+            task.wait(0.3)
+        end
+        task.wait(CFG.UPGRADE_INTERVAL)
+    end
+end)
+
+print("[NukeManager] Loaded! Anti-AFK active.")
